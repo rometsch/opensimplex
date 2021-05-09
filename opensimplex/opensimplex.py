@@ -2,17 +2,11 @@
 # Based on: https://gist.github.com/KdotJPG/b1270127455a94ac5d19
 
 import sys
+import numpy as np
 from array import array
 from ctypes import c_int64
-from math import floor as _floor
-
+from math import floor
 from numba import njit
-
-if sys.version_info[0] < 3:
-    def floor(num):
-        return int(_floor(num))
-else:
-    floor = _floor
 
 
 STRETCH_CONSTANT_2D = -0.211324865405187    # (1/Math.sqrt(2+1)-1)/2
@@ -112,13 +106,66 @@ class OpenSimplex(object):
             source[r] = source[i]
 
     def noise2d(self, x, y):
-        return noise2d(x, y, self._perm)
+        if all((isinstance(a, np.ndarray) for a in (x, y))):
+            if x.shape != y.shape:
+                raise ValueError(f"Shapes are not equal: {x.shape}, {y.shape}")
+            shape = x.shape
+            x = x.ravel()
+            y = y.ravel()
+            rv = np.zeros(len(x), dtype=np.float64)
+            noise2da(rv, x, y, self._perm)
+            return rv.reshape(shape)
+        else:
+            return noise2d(x, y, self._perm)
 
     def noise3d(self, x, y, z):
-        return noise3d(x, y, z, self._perm, self._perm_grad_index_3D)
+        if all((isinstance(a, np.ndarray) for a in (x, y, z))):
+            if any((x.shape != a.shape for a in (y, z))):
+                raise ValueError(
+                    f"Shapes are not equal: {x.shape}, {y.shape}, {z.shape}")
+            shape = x.shape
+            x = x.ravel()
+            y = y.ravel()
+            z = z.ravel()
+            rv = np.zeros(len(z), dtype=np.float64)
+            noise3da(rv, x, y, z, self._perm, self._perm_grad_index_3D)
+            return rv.reshape(shape)
+        else:
+            return noise3d(x, y, z, self._perm, self._perm_grad_index_3D)
 
     def noise4d(self, x, y, z, w):
-        return noise4d(x, y, z, w, self._perm)
+        if all((isinstance(a, np.ndarray) for a in (x, y, z, w))):
+            if any((x.shape != a.shape for a in (y, z, w))):
+                raise ValueError(
+                    f"Shapes are not equal: {x.shape}, {y.shape}, {z.shape}, {w.shape}")
+            shape = x.shape
+            x = x.ravel()
+            y = y.ravel()
+            z = z.ravel()
+            w = w.ravel()
+            rv = np.zeros(len(x), dtype=np.float64)
+            noise4da(rv, x, y, z, w, self._perm)
+            return rv.reshape(shape)
+        else:
+            return noise4d(x, y, z, w, self._perm)
+
+
+@njit
+def noise2da(a, x, y, perm):
+    for n in range(len(x)):
+        a[n] = noise2d(x[n], y[n], perm)
+
+
+@njit
+def noise3da(a, x, y, z, perm, perm_grad_index_3D):
+    for n in range(len(x)):
+        a[n] = noise3d(x[n], y[n], z[n], perm, perm_grad_index_3D)
+
+
+@njit
+def noise4da(a, x, y, z, w, perm):
+    for n in range(len(x)):
+        a[n] = noise4d(x[n], y[n], z[n], w[n], perm)
 
 
 @njit
