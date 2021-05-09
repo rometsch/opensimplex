@@ -150,25 +150,25 @@ class OpenSimplex(object):
             return noise4d(x, y, z, w, self._perm)
 
 
-@njit
+@njit(cache=True)
 def noise2da(a, x, y, perm):
     for n in range(len(x)):
         a[n] = noise2d(x[n], y[n], perm)
 
 
-@njit
+@njit(cache=True)
 def noise3da(a, x, y, z, perm, perm_grad_index_3D):
     for n in range(len(x)):
         a[n] = noise3d(x[n], y[n], z[n], perm, perm_grad_index_3D)
 
 
-@njit
+@njit(cache=True)
 def noise4da(a, x, y, z, w, perm):
     for n in range(len(x)):
         a[n] = noise4d(x[n], y[n], z[n], w[n], perm)
 
 
-@njit
+@njit(cache=True)
 def extrapolate2d(xsb, ysb, dx, dy, perm):
     index = perm[(perm[xsb & 0xFF] + ysb) & 0xFF] & 0x0E
 
@@ -177,7 +177,7 @@ def extrapolate2d(xsb, ysb, dx, dy, perm):
     return g1 * dx + g2 * dy
 
 
-@njit
+@njit(cache=True)
 def extrapolate3d(xsb, ysb, zsb, dx, dy, dz, perm, perm_grad_index_3D):
     index = perm_grad_index_3D[
         (perm[(perm[xsb & 0xFF] + ysb) & 0xFF] + zsb) & 0xFF
@@ -189,7 +189,7 @@ def extrapolate3d(xsb, ysb, zsb, dx, dy, dz, perm, perm_grad_index_3D):
     return g1 * dx + g2 * dy + g3 * dz
 
 
-@njit
+@njit(cache=True)
 def extrapolate4d(xsb, ysb, zsb, wsb, dx, dy, dz, dw, perm):
     index = perm[(
         perm[(
@@ -204,7 +204,7 @@ def extrapolate4d(xsb, ysb, zsb, wsb, dx, dy, dz, dw, perm):
     return g1 * dx + g2 * dy + g3 * dz + g4 * dw
 
 
-@njit
+@njit(cache=True)
 def noise2d(x, y, perm):
     """
     Generate 2D OpenSimplex noise from X,Y coordinates.
@@ -313,7 +313,7 @@ def noise2d(x, y, perm):
     return value / NORM_CONSTANT_2D
 
 
-@njit
+@njit(cache=True)
 def noise3d(x, y, z, perm, perm_grad_index_3D):
     """
     Generate 3D OpenSimplex noise from X,Y,Z coordinates.
@@ -847,7 +847,7 @@ def noise3d(x, y, z, perm, perm_grad_index_3D):
     return value / NORM_CONSTANT_3D
 
 
-@njit
+@njit(cache=True)
 def noise4d(x, y, z, w, perm):
     """
     Generate 4D OpenSimplex noise from X,Y,Z,W coordinates.
