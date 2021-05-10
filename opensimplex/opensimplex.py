@@ -268,12 +268,15 @@ def noise2d(x, y, perm):
     ysv_ext = np.zeros(x.shape, dtype=np.int32)
 
     m = in_sum <= 1  # We're inside the triangle (2-Simplex) at (0,0)
-    noise2d_insum_le_1(xsb[m], ysb[m], xins[m], yins[m], dx0[m], dy0[m], 
-                            in_sum[m], dx_ext[m], dy_ext[m], xsv_ext[m], ysv_ext[m])
+    xsv_ext_before = xsv_ext.copy()
+    noise2d_insum_le_1(xsb, ysb, xins, yins, dx0, dy0, 
+                            in_sum, dx_ext, dy_ext, xsv_ext, ysv_ext, m)
+    
+    print((xsv_ext == xsv_ext_before).all())
     # else:  # We're inside the triangle (2-Simplex) at (1,1)
     m = ~m
-    noise2d_insum_geq_1(xsb[m], ysb[m], xins[m], yins[m], dx0[m], dy0[m], 
-                            in_sum[m], dx_ext[m], dy_ext[m], xsv_ext[m], ysv_ext[m])
+    noise2d_insum_geq_1(xsb, ysb, xins, yins, dx0, dy0, 
+                            in_sum, dx_ext, dy_ext, xsv_ext, ysv_ext, m)
 
     # Contribution (0,0) or (1,1)
     attn0 = 2 - dx0 * dx0 - dy0 * dy0
@@ -291,58 +294,58 @@ def noise2d(x, y, perm):
 
     return value / NORM_CONSTANT_2D
 
-def noise2d_insum_le_1(xsb, ysb, xins, yins, dx0, dy0, in_sum, dx_ext, dy_ext, xsv_ext, ysv_ext):
+def noise2d_insum_le_1(xsb, ysb, xins, yins, dx0, dy0, in_sum, dx_ext, dy_ext, xsv_ext, ysv_ext, gm):
     zins = 1 - in_sum
     # (0,0) is one of the closest two triangular vertices
     # if zins > xins or zins > yins:
-    m = np.logical_or(zins > xins, zins > yins)
+    m = np.logical_and(gm, np.logical_or(zins > xins, zins > yins))
     # if xins > yins:
-    m2 = np.logical_and(m, xins > yins)
+    m2 = np.logical_and(gm, np.logical_and(m, xins > yins))
     xsv_ext[m2] = xsb[m2] + 1
     ysv_ext[m2] = ysb[m2] - 1
     dx_ext[m2] = dx0[m2] - 1
     dy_ext[m2] = dy0[m2] + 1
     # else:
-    m2 = np.logical_and(m, xins <= yins)
+    m2 = np.logical_and(gm, np.logical_and(m, xins <= yins))
     xsv_ext[m2] = xsb[m2] - 1
     ysv_ext[m2] = ysb[m2] + 1
     dx_ext[m2] = dx0[m2] + 1
     dy_ext[m2] = dy0[m2] - 1
     # else:  # (1,0) and (0,1) are the closest two vertices.
-    m = ~m
+    m = np.logical_and(gm, ~m)
     xsv_ext[m] = xsb[m] + 1
     ysv_ext[m] = ysb[m] + 1
     dx_ext[m] = dx0[m] - 1 - 2 * SQUISH_CONSTANT_2D
     dy_ext[m] = dy0[m] - 1 - 2 * SQUISH_CONSTANT_2D
         
-def noise2d_insum_geq_1(xsb, ysb, xins, yins, dx0, dy0, in_sum, dx_ext, dy_ext, xsv_ext, ysv_ext):
+def noise2d_insum_geq_1(xsb, ysb, xins, yins, dx0, dy0, in_sum, dx_ext, dy_ext, xsv_ext, ysv_ext, gm):
     zins = 2 - in_sum
     # (0,0) is one of the closest two triangular vertices
     # if zins < xins or zins < yins:
-    m = np.logical_or(zins < xins, zins < yins)
+    m = np.logical_and(gm, np.logical_or(zins < xins, zins < yins))
     # if xins > yins:
-    m2 = np.logical_and(m, xins > yins)
+    m2 = np.logical_and(gm, np.logical_and(m, xins > yins))
     xsv_ext[m2] = xsb[m2] + 2
     ysv_ext[m2] = ysb[m2] + 0
     dx_ext[m2] = dx0[m2] - 2 - 2 * SQUISH_CONSTANT_2D
     dy_ext[m2] = dy0[m2] + 0 - 2 * SQUISH_CONSTANT_2D
     # else:
-    m2 = np.logical_and(m, xins <= yins)
+    m2 = np.logical_and(gm, np.logical_and(m, xins <= yins))
     xsv_ext[m] = xsb[m] + 0
     ysv_ext[m] = ysb[m] + 2
     dx_ext[m] = dx0[m] + 0 - 2 * SQUISH_CONSTANT_2D
     dy_ext[m] = dy0[m] - 2 - 2 * SQUISH_CONSTANT_2D
     # else:  # (1,0) and (0,1) are the closest two vertices.
-    m = ~m
+    m = np.logical_and(gm, ~m)
     dx_ext[m] = dx0[m]
     dy_ext[m] = dy0[m]
     xsv_ext[m] = xsb[m]
     ysv_ext[m] = ysb[m]
     
-    xsb += 1
-    ysb += 1
-    dx0 = dx0 - 1 - 2 * SQUISH_CONSTANT_2D
-    dy0 = dy0 - 1 - 2 * SQUISH_CONSTANT_2D
+    xsb[gm] += 1
+    ysb[gm] += 1
+    dx0[gm] = dx0[gm] - 1 - 2 * SQUISH_CONSTANT_2D
+    dy0[gm] = dy0[gm] - 1 - 2 * SQUISH_CONSTANT_2D
 
 @njit(cache=True)
 def noise3d(x, y, z, perm, perm_grad_index_3D):
