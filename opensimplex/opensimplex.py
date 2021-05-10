@@ -5,8 +5,13 @@ import sys
 import numpy as np
 from array import array
 from ctypes import c_int64
-from math import floor
-from numba import njit
+# from math import floor
+from numpy import floor
+# from numba import njit
+def njit(*args, **kwargs):
+    def inner(func):
+        return func
+    return inner
 
 
 STRETCH_CONSTANT_2D = -0.211324865405187    # (1/Math.sqrt(2+1)-1)/2
@@ -31,6 +36,7 @@ GRADIENTS_2D = (
     5, -2,    2, -5,
     -5, -2,   -2, -5,
 )
+GRADIENTS_2D = np.array(GRADIENTS_2D)
 
 # Gradients for 3D. They approximate the directions to the
 # vertices of a rhombicuboctahedron from the center, skewed so
@@ -104,6 +110,7 @@ class OpenSimplex(object):
             perm_grad_index_3D[i] = int(
                 (perm[i] % (len(GRADIENTS_3D) / 3)) * 3)
             source[r] = source[i]
+        self._perm = np.array(self._perm)
 
     def noise2d(self, x, y):
         if all((isinstance(a, np.ndarray) for a in (x, y))):
@@ -170,7 +177,9 @@ def noise4da(a, x, y, z, w, perm):
 
 @njit(cache=True)
 def extrapolate2d(xsb, ysb, dx, dy, perm):
-    index = perm[(perm[xsb & 0xFF] + ysb) & 0xFF] & 0x0E
+    inds = np.bitwise_and(xsb, 0xFF)
+    inds = np.bitwise_and(perm[inds] + ysb, 0xFF)
+    index = np.bitwise_and(perm[inds], 0x0E)
 
     g1 = GRADIENTS_2D[index]
     g2 = GRADIENTS_2D[index+1]
@@ -215,8 +224,8 @@ def noise2d(x, y, perm):
     ys = y + stretch_offset
 
     # Floor to get grid coordinates of rhombus (stretched square) super-cell origin.
-    xsb = floor(xs)
-    ysb = floor(ys)
+    xsb = floor(xs).astype(np.int32)
+    ysb = floor(ys).astype(np.int32)
 
     # Skew out to get actual coordinates of rhombus origin. We'll need these later.
     squish_offset = (xsb + ysb) * SQUISH_CONSTANT_2D
@@ -234,84 +243,106 @@ def noise2d(x, y, perm):
     dx0 = x - xb
     dy0 = y - yb
 
-    value = 0
+    value = np.zeros(x.shape)
 
     # Contribution (1,0)
     dx1 = dx0 - 1 - SQUISH_CONSTANT_2D
     dy1 = dy0 - 0 - SQUISH_CONSTANT_2D
     attn1 = 2 - dx1 * dx1 - dy1 * dy1
-    if attn1 > 0:
-        attn1 *= attn1
-        value += attn1 * attn1 * \
-            extrapolate2d(xsb + 1, ysb + 0, dx1, dy1, perm)
+    m = attn1 > 0
+    attn1 = np.power(attn1[m],4)
+    value[m] += attn1 * extrapolate2d(xsb[m] + 1, ysb[m] + 0, dx1[m], dy1[m], perm)
 
     # Contribution (0,1)
     dx2 = dx0 - 0 - SQUISH_CONSTANT_2D
     dy2 = dy0 - 1 - SQUISH_CONSTANT_2D
     attn2 = 2 - dx2 * dx2 - dy2 * dy2
-    if attn2 > 0:
-        attn2 *= attn2
-        value += attn2 * attn2 * \
-            extrapolate2d(xsb + 0, ysb + 1, dx2, dy2, perm)
+    
+    m = attn2 > 0
+    attn2 = np.power(attn2[m], 4)
+    value[m] += attn2 * extrapolate2d(xsb[m] + 0, ysb[m] + 1, dx2[m], dy2[m], perm)
 
-    if in_sum <= 1:  # We're inside the triangle (2-Simplex) at (0,0)
-        zins = 1 - in_sum
-        # (0,0) is one of the closest two triangular vertices
-        if zins > xins or zins > yins:
-            if xins > yins:
-                xsv_ext = xsb + 1
-                ysv_ext = ysb - 1
-                dx_ext = dx0 - 1
-                dy_ext = dy0 + 1
-            else:
-                xsv_ext = xsb - 1
-                ysv_ext = ysb + 1
-                dx_ext = dx0 + 1
-                dy_ext = dy0 - 1
-        else:  # (1,0) and (0,1) are the closest two vertices.
-            xsv_ext = xsb + 1
-            ysv_ext = ysb + 1
-            dx_ext = dx0 - 1 - 2 * SQUISH_CONSTANT_2D
-            dy_ext = dy0 - 1 - 2 * SQUISH_CONSTANT_2D
-    else:  # We're inside the triangle (2-Simplex) at (1,1)
-        zins = 2 - in_sum
-        # (0,0) is one of the closest two triangular vertices
-        if zins < xins or zins < yins:
-            if xins > yins:
-                xsv_ext = xsb + 2
-                ysv_ext = ysb + 0
-                dx_ext = dx0 - 2 - 2 * SQUISH_CONSTANT_2D
-                dy_ext = dy0 + 0 - 2 * SQUISH_CONSTANT_2D
-            else:
-                xsv_ext = xsb + 0
-                ysv_ext = ysb + 2
-                dx_ext = dx0 + 0 - 2 * SQUISH_CONSTANT_2D
-                dy_ext = dy0 - 2 - 2 * SQUISH_CONSTANT_2D
-        else:  # (1,0) and (0,1) are the closest two vertices.
-            dx_ext = dx0
-            dy_ext = dy0
-            xsv_ext = xsb
-            ysv_ext = ysb
-        xsb += 1
-        ysb += 1
-        dx0 = dx0 - 1 - 2 * SQUISH_CONSTANT_2D
-        dy0 = dy0 - 1 - 2 * SQUISH_CONSTANT_2D
+    dx_ext = np.zeros(x.shape, dtype=np.float64)
+    dy_ext = np.zeros(x.shape, dtype=np.float64)
+    xsv_ext = np.zeros(x.shape, dtype=np.int32)
+    ysv_ext = np.zeros(x.shape, dtype=np.int32)
+
+    m = in_sum <= 1  # We're inside the triangle (2-Simplex) at (0,0)
+    noise2d_insum_le_1(xsb[m], ysb[m], xins[m], yins[m], dx0[m], dy0[m], 
+                            in_sum[m], dx_ext[m], dy_ext[m], xsv_ext[m], ysv_ext[m])
+    # else:  # We're inside the triangle (2-Simplex) at (1,1)
+    m = ~m
+    noise2d_insum_geq_1(xsb[m], ysb[m], xins[m], yins[m], dx0[m], dy0[m], 
+                            in_sum[m], dx_ext[m], dy_ext[m], xsv_ext[m], ysv_ext[m])
 
     # Contribution (0,0) or (1,1)
     attn0 = 2 - dx0 * dx0 - dy0 * dy0
-    if attn0 > 0:
-        attn0 *= attn0
-        value += attn0 * attn0 * extrapolate2d(xsb, ysb, dx0, dy0, perm)
+    
+    m = attn0 > 0
+    attn0[m] *= attn0[m]
+    value[m] += attn0[m] * attn0[m] * extrapolate2d(xsb[m], ysb[m], dx0[m], dy0[m], perm)
 
     # Extra Vertex
     attn_ext = 2 - dx_ext * dx_ext - dy_ext * dy_ext
-    if attn_ext > 0:
-        attn_ext *= attn_ext
-        value += attn_ext * attn_ext * \
-            extrapolate2d(xsv_ext, ysv_ext, dx_ext, dy_ext, perm)
+    m = attn_ext > 0
+    attn_ext[m] *= attn_ext[m]
+    value[m] += attn_ext[m] * attn_ext[m] * \
+        extrapolate2d(xsv_ext[m], ysv_ext[m], dx_ext[m], dy_ext[m], perm)
 
     return value / NORM_CONSTANT_2D
 
+def noise2d_insum_le_1(xsb, ysb, xins, yins, dx0, dy0, in_sum, dx_ext, dy_ext, xsv_ext, ysv_ext):
+    zins = 1 - in_sum
+    # (0,0) is one of the closest two triangular vertices
+    # if zins > xins or zins > yins:
+    m = np.logical_or(zins > xins, zins > yins)
+    # if xins > yins:
+    m2 = np.logical_and(m, xins > yins)
+    xsv_ext[m2] = xsb[m2] + 1
+    ysv_ext[m2] = ysb[m2] - 1
+    dx_ext[m2] = dx0[m2] - 1
+    dy_ext[m2] = dy0[m2] + 1
+    # else:
+    m2 = np.logical_and(m, xins <= yins)
+    xsv_ext[m2] = xsb[m2] - 1
+    ysv_ext[m2] = ysb[m2] + 1
+    dx_ext[m2] = dx0[m2] + 1
+    dy_ext[m2] = dy0[m2] - 1
+    # else:  # (1,0) and (0,1) are the closest two vertices.
+    m = ~m
+    xsv_ext[m] = xsb[m] + 1
+    ysv_ext[m] = ysb[m] + 1
+    dx_ext[m] = dx0[m] - 1 - 2 * SQUISH_CONSTANT_2D
+    dy_ext[m] = dy0[m] - 1 - 2 * SQUISH_CONSTANT_2D
+        
+def noise2d_insum_geq_1(xsb, ysb, xins, yins, dx0, dy0, in_sum, dx_ext, dy_ext, xsv_ext, ysv_ext):
+    zins = 2 - in_sum
+    # (0,0) is one of the closest two triangular vertices
+    # if zins < xins or zins < yins:
+    m = np.logical_or(zins < xins, zins < yins)
+    # if xins > yins:
+    m2 = np.logical_and(m, xins > yins)
+    xsv_ext[m2] = xsb[m2] + 2
+    ysv_ext[m2] = ysb[m2] + 0
+    dx_ext[m2] = dx0[m2] - 2 - 2 * SQUISH_CONSTANT_2D
+    dy_ext[m2] = dy0[m2] + 0 - 2 * SQUISH_CONSTANT_2D
+    # else:
+    m2 = np.logical_and(m, xins <= yins)
+    xsv_ext[m] = xsb[m] + 0
+    ysv_ext[m] = ysb[m] + 2
+    dx_ext[m] = dx0[m] + 0 - 2 * SQUISH_CONSTANT_2D
+    dy_ext[m] = dy0[m] - 2 - 2 * SQUISH_CONSTANT_2D
+    # else:  # (1,0) and (0,1) are the closest two vertices.
+    m = ~m
+    dx_ext[m] = dx0[m]
+    dy_ext[m] = dy0[m]
+    xsv_ext[m] = xsb[m]
+    ysv_ext[m] = ysb[m]
+    
+    xsb += 1
+    ysb += 1
+    dx0 = dx0 - 1 - 2 * SQUISH_CONSTANT_2D
+    dy0 = dy0 - 1 - 2 * SQUISH_CONSTANT_2D
 
 @njit(cache=True)
 def noise3d(x, y, z, perm, perm_grad_index_3D):
