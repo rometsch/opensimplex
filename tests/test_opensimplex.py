@@ -6,7 +6,7 @@
 import gzip
 import json
 import unittest
-from opensimplex import OpenSimplex
+from src_opensimplex import OpenSimplex
 
 class TestOpensimplex(unittest.TestCase):
     def load_samples(self):
@@ -31,7 +31,8 @@ class TestOpensimplex(unittest.TestCase):
                 actual = simplex.noise4d(s[0], s[1], s[2], s[3])
             else:
                 self.fail("Unexpected sample size: " + str(len(s)))
-            self.assertEqual(expected, actual)
+            diff = abs(expected - actual)
+            self.assertGreater(1e-3, diff)
 
 if __name__ == "__main__":
     unittest.main()
