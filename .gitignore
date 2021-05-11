@@ -6,3 +6,6 @@ dist/
 build/
 opensimplex.egg-info/
 venv/
+*.pyc
+*.nbc
+*.nbi
