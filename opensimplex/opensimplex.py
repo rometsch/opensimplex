@@ -1,7 +1,6 @@
 
 # Based on: https://gist.github.com/KdotJPG/b1270127455a94ac5d19
 
-import sys
 import numpy as np
 from array import array
 from ctypes import c_int64
@@ -63,12 +62,15 @@ class OpenSimplex(object):
             if r < 0:
                 r += i + 1
             perm[i] = source[r]
-            
+
             source[r] = source[i]
         self._perm = np.array(self._perm)
 
     def noise2d(self, x, y):
-        return noise2d(x, y, self._perm)
+        if isinstance(x, np.ndarray):
+            return noise2d(x, y, self._perm)
+        else:
+            return noise2d(np.array([x]), np.array([y]), self._perm)[0]
 
 
 def extrapolate2d(xsb, ysb, dx, dy, perm):
